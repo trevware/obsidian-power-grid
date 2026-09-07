@@ -213,6 +213,11 @@ export class GridRenderer {
 
   onRendered: () => void = () => {};
   onSourceFailed: (id: string, signature: string) => void = () => {};
+  /**
+   * A cover whose file the vault could not resolve, which is not the same as
+   * one that failed to load. See PendingSources.
+   */
+  onSourcePending: (id: string, signature: string) => void = () => {};
   onZoomChanged: (zoom: number) => void = () => {};
   onSelectionChanged: (ids: string[]) => void = () => {};
   onDeleteRequested: (ids: string[]) => void = () => {};
@@ -1559,6 +1564,22 @@ export class GridRenderer {
     // Posters are always local files; the painted asset may be either.
     const still = this.sourceFor(model.posterPath, false);
     const original = this.sourceFor(model.filePath, model.remote);
+
+    // resourceUrl gives "" for a vault path it has no file for, which is what
+    // an attachment written moments ago looks like until the file registry
+    // catches up. Mounting that sets src="" and fires error, and the tile is
+    // then dropped as a broken cover for the whole session — over a race the
+    // next paint wins. Leave the signature unstamped so there is a next paint,
+    // and let the view decide how long to keep waiting.
+    if (!original) {
+      element.root.empty();
+      element.media = null;
+      element.id = model.id;
+      element.kind = model.kind;
+      element.signature = "";
+      this.onSourcePending(model.id, model.signature);
+      return;
+    }
 
     // An image tile whose source changed (archiving replaced the remote copy
     // with a local one) swaps in place rather than rebuilding the tile.

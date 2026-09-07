@@ -56,6 +56,7 @@ import {
   withHeldValues,
 } from "./core/filter";
 import type { FacetDef, FilterState } from "./core/filter";
+import { PENDING_RETRY_MS, PendingSources } from "./core/pending";
 import { SpaceBar } from "./space-bar";
 import { STAGES, expandStage, shrinkStage, stageLabel } from "./core/density";
 import type { DensityStage } from "./core/density";
@@ -144,6 +145,12 @@ export class OrikoView extends ItemView {
    * archiving gives it a different, working cover.
    */
   private unloadable = new Map<string, string>();
+  /**
+   * Covers waiting on a file the vault has not registered yet, kept apart
+   * from `unloadable` because they are not failures: an attachment written a
+   * moment ago resolves to nothing for a beat and then resolves fine.
+   */
+  private pending = new PendingSources();
   private sheet: Sheet | null = null;
   /**
    * Values set from the open menu, before the vault has confirmed them.
@@ -413,6 +420,23 @@ export class OrikoView extends ItemView {
     };
 
     this.grid.onSourceFailed = (id: string, signature: string) => {
+      if (this.unloadable.get(id) === signature) return;
+      this.unloadable.set(id, signature);
+      this.refresh();
+    };
+
+    this.grid.onSourcePending = (id: string, signature: string) => {
+      // Still worth waiting for: paint again shortly and see if the vault has
+      // caught up. Only once its patience is spent does the cover count as
+      // one that will never load.
+      if (this.pending.wait(id, signature)) {
+        window.setTimeout(() => {
+          // The view can close inside the wait, and a repaint would then run
+          // against a grid that is already gone.
+          if (this.grid) this.refresh();
+        }, PENDING_RETRY_MS);
+        return;
+      }
       if (this.unloadable.get(id) === signature) return;
       this.unloadable.set(id, signature);
       this.refresh();

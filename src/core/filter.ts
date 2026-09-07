@@ -1,4 +1,5 @@
 import { bucketLabels, dateBuckets, dateTokenMatches, isDateProperty, tokenLabel } from "./dates";
+import { holdingAcross } from "./editable";
 import { domainOf } from "./scan";
 import type { TileModel } from "./tile";
 
@@ -313,6 +314,30 @@ export function propertyVocabulary(tiles: TileModel[], key: string): PropertyVoc
 }
 
 /**
+ * The values already on the clippings being edited, first.
+ *
+ * A picker's job is to answer "what is on this" as well as "what could go on
+ * it", and a tick eight rows down a list ordered by popularity answers the
+ * first question only if you read the whole list. Lifting the held ones puts
+ * the answer where the eye lands. A value only some of a selection holds
+ * comes up too: a dash is an answer as much as a tick is.
+ *
+ * A stable partition, so the wall's own order survives inside each group.
+ */
+export function heldFirst(
+  values: FacetValue[],
+  holdings: readonly (readonly string[])[]
+): FacetValue[] {
+  const held: FacetValue[] = [];
+  const rest: FacetValue[] = [];
+  for (const entry of values) {
+    if (holdingAcross(holdings, entry.value) === "none") rest.push(entry);
+    else held.push(entry);
+  }
+  return held.length === 0 ? values : [...held, ...rest];
+}
+
+/**
  * A vocabulary with the values the clippings being edited already hold folded
  * in, for a picker that has just been used to create one.
  *
@@ -343,12 +368,13 @@ export function withHeldValues(
 
   if (added.size === 0) return vocabulary;
 
-  const values = [...vocabulary.values, ...[...added].map(([value, count]) => ({ value, count }))];
-  // Sorted the way propertyVocabulary sorts, so the new row sits where the
-  // index will put it and the list does not rearrange itself when it catches up.
-  values.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+  // Ahead of the rest: the list it joins is ordered held-first, a value that
+  // has just been created is held, and the row you have this second made is
+  // the one you are looking for.
+  const fresh = [...added].map(([value, count]) => ({ value, count }));
+  fresh.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 
-  return { values, single: vocabulary.single };
+  return { values: [...fresh, ...vocabulary.values], single: vocabulary.single };
 }
 
 function tally(tiles: TileModel[], def: FacetDef): FacetValue[] {

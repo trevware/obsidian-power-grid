@@ -45,6 +45,7 @@ import {
   facetDefs,
   facetLabel,
   facetsOf,
+  heldFirst,
   isEmptyValue,
   isFilterEmpty,
   matchesFilter,
@@ -1661,10 +1662,15 @@ export class OrikoView extends ItemView {
     );
   }
 
-  private vocabularyFor(key: string): PropertyVocabulary {
+  private vocabularyFor(key: string, holdings: string[][]): PropertyVocabulary {
     const cached = this.vocabularies.get(key);
     if (cached) return cached;
-    const fresh = propertyVocabulary(this.facets, key);
+    const wall = propertyVocabulary(this.facets, key);
+    // Held-first, decided here and then frozen with the rest of the order.
+    // Re-deciding it per rebuild would send a row to the top of the list the
+    // instant you ticked it, which is the reordering under the pointer this
+    // cache exists to prevent.
+    const fresh = { ...wall, values: heldFirst(wall.values, holdings) };
     this.vocabularies.set(key, fresh);
     return fresh;
   }
@@ -1676,7 +1682,7 @@ export class OrikoView extends ItemView {
     // holds the wall's vocabulary, which cannot know about it yet: the note is
     // still being written, and the refresh that would rescan it is held down
     // while this menu is up.
-    const { values, single } = withHeldValues(this.vocabularyFor(key), holdings);
+    const { values, single } = withHeldValues(this.vocabularyFor(key, holdings), holdings);
 
     // Recorded before the writes, and the writes are not waited on. The menu
     // rebuilds from the record on the same tick as the click; the notes
@@ -1798,7 +1804,7 @@ export class OrikoView extends ItemView {
     single: boolean,
     holdings: string[][]
   ): void {
-    const options = propertyVocabulary(this.facets, key).values;
+    const options = heldFirst(propertyVocabulary(this.facets, key).values, holdings);
 
     const apply = (value: string): void => {
       this.sheet?.close();

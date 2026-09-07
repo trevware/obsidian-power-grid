@@ -11,6 +11,7 @@ import {
   isFilterEmpty,
   matchesFilter,
   propertyVocabulary,
+  heldFirst,
   pruneFilter,
   withHeldValues,
   toggleFacet,
@@ -412,6 +413,44 @@ describe("propertyVocabulary", () => {
   });
 });
 
+describe("heldFirst", () => {
+  const values = [
+    { value: "design", count: 3 },
+    { value: "manga", count: 2 },
+    { value: "cli", count: 1 },
+  ];
+
+  it("lifts the values already applied to the top", () => {
+    expect(heldFirst(values, [["manga"]]).map((entry) => entry.value)).toEqual([
+      "manga",
+      "design",
+      "cli",
+    ]);
+  });
+
+  it("keeps the wall's order within each group", () => {
+    expect(heldFirst(values, [["cli", "design"]]).map((entry) => entry.value)).toEqual([
+      "design",
+      "cli",
+      "manga",
+    ]);
+  });
+
+  it("lifts a value only some of the selection holds", () => {
+    // A dash is still an answer to "is this applied", so it belongs up top
+    // with the ticks rather than down among the ones that are simply not set.
+    expect(heldFirst(values, [["cli"], []]).map((entry) => entry.value)).toEqual([
+      "cli",
+      "design",
+      "manga",
+    ]);
+  });
+
+  it("leaves the order alone when nothing is held", () => {
+    expect(heldFirst(values, [[]])).toEqual(values);
+  });
+});
+
 describe("withHeldValues", () => {
   const wall: PropertyVocabulary = {
     values: [
@@ -421,12 +460,13 @@ describe("withHeldValues", () => {
     single: false,
   };
 
-  it("adds a value the wall has not seen, counted by who holds it", () => {
+  it("puts a value the wall has not seen at the top, counted by who holds it", () => {
     // The point of the whole function: a value created a moment ago is held
-    // by the clipping but not yet on the wall, and has to show up anyway.
+    // by the clipping but not yet on the wall, and has to show up anyway. It
+    // leads because it is held, which is the order the rest of the list is in.
     expect(withHeldValues(wall, [["design", "shopping"], ["shopping"]]).values).toEqual([
-      { value: "design", count: 3 },
       { value: "shopping", count: 2 },
+      { value: "design", count: 3 },
       { value: "manga", count: 1 },
     ]);
   });

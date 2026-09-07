@@ -5,6 +5,14 @@ All notable changes to Oriko will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.57] - 2026-09-07
+
+### Changed
+- **Property menus now put what's already applied at the top.** Open Categories on a clipping and the ones it already has lead the list, ticked, so you can see what's on it without reading to the bottom. With several clippings selected, anything only some of them carry comes up too, with a dash. The order settles when you open the menu and holds still while you work, so ticking a row doesn't throw it to the top and slide the next one out from under your cursor.
+
+### Fixed
+- **A clipping you paste no longer goes missing until you reload.** Pasting a link or an image sometimes gave you a clipping that was saved and filed but never turned up on the wall. Its picture had only just been written, and if the wall got to it before Obsidian had finished filing that file away, it gave up on the tile for the rest of the session. It now waits a beat and tries again.
+
 ## [0.1.56] - 2026-09-07
 
 ### Fixed

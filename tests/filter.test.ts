@@ -12,11 +12,12 @@ import {
   matchesFilter,
   propertyVocabulary,
   pruneFilter,
+  withHeldValues,
   toggleFacet,
   typedFacets,
   valueLabel,
 } from "../src/core/filter";
-import type { FilterState } from "../src/core/filter";
+import type { FilterState, PropertyVocabulary } from "../src/core/filter";
 import type { TileModel } from "../src/core/tile";
 
 function tile(
@@ -408,6 +409,40 @@ describe("propertyVocabulary", () => {
 
   it("offers nothing for a key no clipping carries", () => {
     expect(propertyVocabulary([tile("a")], "nothing")).toEqual({ values: [], single: true });
+  });
+});
+
+describe("withHeldValues", () => {
+  const wall: PropertyVocabulary = {
+    values: [
+      { value: "design", count: 3 },
+      { value: "manga", count: 1 },
+    ],
+    single: false,
+  };
+
+  it("adds a value the wall has not seen, counted by who holds it", () => {
+    // The point of the whole function: a value created a moment ago is held
+    // by the clipping but not yet on the wall, and has to show up anyway.
+    expect(withHeldValues(wall, [["design", "shopping"], ["shopping"]]).values).toEqual([
+      { value: "design", count: 3 },
+      { value: "shopping", count: 2 },
+      { value: "manga", count: 1 },
+    ]);
+  });
+
+  it("leaves the wall's own counts alone", () => {
+    expect(withHeldValues(wall, [["design"]]).values).toEqual(wall.values);
+  });
+
+  it("keeps the wall's reading of whether the property is a choice", () => {
+    // Flipping this mid-menu would turn the next toggle from a replace into
+    // an add halfway through the same list.
+    expect(withHeldValues({ values: [], single: true }, [["a", "b"]]).single).toBe(true);
+  });
+
+  it("returns the vocabulary untouched when nothing is new", () => {
+    expect(withHeldValues(wall, [["design"], ["manga"]])).toBe(wall);
   });
 });
 

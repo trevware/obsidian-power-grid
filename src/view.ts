@@ -53,6 +53,7 @@ import {
   toggleFacet,
   typedFacets,
   valueLabel,
+  withHeldValues,
 } from "./core/filter";
 import type { FacetDef, FilterState } from "./core/filter";
 import { SpaceBar } from "./space-bar";
@@ -1646,7 +1647,12 @@ export class OrikoView extends ItemView {
 
   private propertyMenu(paths: string[], key: string): MenuItem[] {
     const holdings = paths.map((path) => this.heldValues(path, key));
-    const { values, single } = this.vocabularyFor(key);
+    // Folded in on every build rather than into the cache, so a value created
+    // one row up has a row of its own on the rebuild that follows. The cache
+    // holds the wall's vocabulary, which cannot know about it yet: the note is
+    // still being written, and the refresh that would rescan it is held down
+    // while this menu is up.
+    const { values, single } = withHeldValues(this.vocabularyFor(key), holdings);
 
     // Recorded before the writes, and the writes are not waited on. The menu
     // rebuilds from the record on the same tick as the click; the notes

@@ -312,6 +312,45 @@ export function propertyVocabulary(tiles: TileModel[], key: string): PropertyVoc
   return { values, single };
 }
 
+/**
+ * A vocabulary with the values the clippings being edited already hold folded
+ * in, for a picker that has just been used to create one.
+ *
+ * The wall's vocabulary is counted from the index, and the index only learns
+ * about an edit once the note has been written and rescanned. A value created
+ * from the picker is therefore held by the clipping and unknown to the wall,
+ * and without this the row for it would not exist to be ticked: the value
+ * would look like it had gone nowhere until the menu was closed and reopened.
+ *
+ * Only ever adds. The wall's own counts are left as they are, so nothing the
+ * user is not looking at shifts underneath them, and `single` stays the wall's
+ * reading: flipping it here would turn the next toggle from a replace into an
+ * add halfway down the same list.
+ */
+export function withHeldValues(
+  vocabulary: PropertyVocabulary,
+  holdings: string[][]
+): PropertyVocabulary {
+  const known = new Set(vocabulary.values.map((entry) => entry.value));
+  const added = new Map<string, number>();
+
+  for (const held of holdings) {
+    for (const value of new Set(held)) {
+      if (known.has(value)) continue;
+      added.set(value, (added.get(value) ?? 0) + 1);
+    }
+  }
+
+  if (added.size === 0) return vocabulary;
+
+  const values = [...vocabulary.values, ...[...added].map(([value, count]) => ({ value, count }))];
+  // Sorted the way propertyVocabulary sorts, so the new row sits where the
+  // index will put it and the list does not rearrange itself when it catches up.
+  values.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+
+  return { values, single: vocabulary.single };
+}
+
 function tally(tiles: TileModel[], def: FacetDef): FacetValue[] {
   const counts = new Map<string, number>();
   for (const tile of tiles) {

@@ -293,7 +293,7 @@ function rulesScreen(
   grids: GridsController,
   grid: GridSpace,
   index: number | undefined,
-  after: () => void,
+  after: (saved: GridSpace) => void,
   from?: string
 ): SheetScreen {
   const world = grids.ruleWorld();
@@ -342,8 +342,8 @@ function rulesScreen(
       // No rename confirmation to make: a smart grid has no members, because
       // nothing carries its name in frontmatter, so renaming one rewrites no
       // note and has nothing to warn about.
-      if (creating) void grids.create(next).then(after);
-      else void grids.rename(from ?? grid.name, next).then(after);
+      if (creating) void grids.create(next).then(() => after(next));
+      else void grids.rename(from ?? grid.name, next).then(() => after(next));
     },
   };
 }
@@ -353,7 +353,7 @@ function gridEditorScreen(
   grids: GridsController,
   grid: GridSpace,
   index: number | undefined,
-  after: () => void
+  after: (saved: GridSpace) => void
 ): SheetScreen {
   const others = grids
     .grids()
@@ -412,13 +412,13 @@ function gridEditorScreen(
 
       if (creating) {
         sheet.close();
-        void grids.create(next).then(after);
+        void grids.create(next).then(() => after(next));
         return;
       }
 
       const renamed = next.name !== grid.name;
       const members = renamed ? grids.memberCount(grid.name) : 0;
-      const apply = (): void => void grids.rename(grid.name, next).then(after);
+      const apply = (): void => void grids.rename(grid.name, next).then(() => after(next));
 
       // Only a rename touches notes. Changing an icon is settings alone, so it
       // should not stop to ask.
@@ -444,7 +444,7 @@ export function openGridEditor(
   grids: GridsController,
   grid: GridSpace,
   index: number | undefined,
-  after: () => void = () => undefined
+  after: (saved: GridSpace) => void = () => undefined
 ): void {
   const screen = gridEditorScreen(sheet, grids, grid, index, after);
   // Pushed onto a sheet that is already up, so Escape backs out to whatever
@@ -734,7 +734,7 @@ export function openGridsManager(
 export function openNewGrid(
   sheet: Sheet,
   grids: GridsController,
-  after: () => void = () => undefined
+  after: (saved: GridSpace) => void = () => undefined
 ): void {
   sheet.open(
     gridEditorScreen(sheet, grids, { name: "", icon: GRID_ICONS[0] }, undefined, after)
@@ -753,7 +753,7 @@ export function openNewSmartGrid(
   sheet: Sheet,
   grids: GridsController,
   rules: FilterState,
-  after: () => void = () => undefined
+  after: (saved: GridSpace) => void = () => undefined
 ): void {
   sheet.open(
     gridEditorScreen(sheet, grids, { name: "", icon: GRID_ICONS[0], rules }, undefined, after)

@@ -891,13 +891,14 @@ export class OrikoView extends ItemView {
       });
     }
 
-    if (this.allGrids().length > 1) {
-      file.push({
-        icon: "corner-up-right",
-        label: "Move to grid",
-        submenu: this.gridMoveRows(ids),
-      });
-    }
+    // No longer gated on there being a second grid: the submenu now ends in
+    // New grid, so on a vault with one grid it is the row that makes the
+    // second one rather than a list of nowhere to go.
+    file.push({
+      icon: "corner-up-right",
+      label: "Move to grid",
+      submenu: this.gridMoveRows(ids),
+    });
 
     destroy.push({
       icon: "trash-2",
@@ -910,13 +911,25 @@ export class OrikoView extends ItemView {
     return groupedMenu([reach, describe, file, destroy]);
   }
 
-  /** The grids a selection can be moved to. One list, for the menu and the bar. */
+  /** The grids a selection can be moved to, ending in New grid, which takes
+      the selection with it. Folders offer the same, and a selection that has
+      nowhere to go is the reason: the way out of a wall with one grid on it
+      is to make the second one from here. */
   private gridMoveRows(ids: string[]): MenuItem[] {
-    return this.allGrids().map((grid) => ({
-      icon: grid.icon,
-      label: grid.name,
-      onSelect: () => void this.moveTo(ids, grid.name),
-    }));
+    const grids = this.allGrids();
+    return [
+      ...grids.map((grid) => ({
+        icon: grid.icon,
+        label: grid.name,
+        onSelect: () => void this.moveTo(ids, grid.name),
+      })),
+      {
+        icon: "plus",
+        label: "New grid\u2026",
+        divider: true,
+        onSelect: () => this.promptNewGrid(ids),
+      },
+    ];
   }
 
   /** The folders here, ending in New folder, which takes the selection with it. */
@@ -2111,9 +2124,15 @@ export class OrikoView extends ItemView {
     );
   }
 
-  private promptNewGrid(): void {
+  /** Opens the editor for a new grid; `seed` is moved onto it once it is made. */
+  private promptNewGrid(seed: string[] = []): void {
     if (!this.sheet) return;
-    openNewGrid(this.sheet, this.gridsController(), () => this.refresh());
+    openNewGrid(this.sheet, this.gridsController(), (saved) => {
+      // Moved rather than followed: the clippings leave this wall, and the
+      // notice says where they went, which is how every other move reads.
+      if (seed.length > 0) void this.moveTo(seed, saved.name);
+      this.refresh();
+    });
   }
 
   /** Empty rules rather than none: it is what tells the editor which kind of

@@ -86,7 +86,7 @@ export class OrikoSettingTab extends PluginSettingTab {
   private paintFilterProperties(containerEl: HTMLElement): void {
     this.paintPropertyList(containerEl, {
       enabled: this.plugin.settings.filterProperties,
-      intro: "Offered by the filter menu, alongside media type and source.",
+      intro: "What the filter menu offers, alongside media type and source.",
       empty: "None. The menu still offers Media type and Source.",
       commit: (keys) => this.commitFilterProperties(keys),
     });
@@ -178,12 +178,12 @@ export class OrikoSettingTab extends PluginSettingTab {
     return [
       {
         name: "Clippings folder",
-        desc: "The folder the wall shows. Every note in it is a clipping.",
+        desc: "Every note in this folder shows up on the wall.",
         control: { type: "folder", key: "clippingsFolder", defaultValue: "Clippings" },
       },
       {
         name: "Attachment folder",
-        desc: "Where downloaded copies of remote images and videos are kept.",
+        desc: "Where the downloaded copies of pictures and video go.",
         control: {
           type: "folder",
           key: "attachmentFolder",
@@ -196,12 +196,12 @@ export class OrikoSettingTab extends PluginSettingTab {
         items: [
           {
             name: "Autoplay videos",
-            desc: "Play video tiles while they are in view. Every playing video holds decoded frames in memory, so a wall of them can use a lot of RAM. Reduce Motion always wins.",
+            desc: "Video tiles play while they are on screen. A wall of them uses a lot of memory, and Reduce Motion always wins.",
             control: { type: "toggle", key: "autoplayVideo" },
           },
           {
             name: "Add new clippings automatically",
-            desc: "Show new files from the clippings folder on the wall the moment they arrive. When off, they appear after a relaunch or the 'Rescan clippings folder' command.",
+            desc: "New clippings turn up on the wall as they are saved. With this off, they wait for a relaunch or the Rescan clippings folder command.",
             control: { type: "toggle", key: "watchClippings" },
           },
         ],
@@ -212,17 +212,17 @@ export class OrikoSettingTab extends PluginSettingTab {
         items: [
           {
             name: "Download media automatically",
-            desc: "Keep a local copy of each clipping's remote images and videos, so they survive the source going away. Runs in the background as clippings arrive.",
+            desc: "Keeps a copy of every picture and video, so a clipping still works once the page it came from goes dark. Happens quietly as clippings arrive.",
             control: { type: "toggle", key: "archiveOnCreate" },
           },
           {
             name: "Use community media resolvers",
-            desc: "X and Instagram never publish their video URLs, so pasting a post can only reach the video through a community mirror (fxtwitter, kkinstagram). This sends the pasted URL to that mirror. Turn it off to stay first-party, and those posts fall back to whatever poster image the site publishes.",
+            desc: "X and Instagram never hand out their video links, so getting the video means asking a community mirror (fxtwitter, kkinstagram) and sending it your link. With this off, those posts fall back to the site's own poster image.",
             control: { type: "toggle", key: "useResolvers" },
           },
           {
             name: "Shared clips go to",
-            desc: "Where a link shared from another app is filed. Clips made on the wall go to the grid on screen.",
+            desc: "Where a link shared from another app lands. Anything you clip on the wall goes to the grid you are on.",
             control: {
               type: "dropdown",
               key: "sharedClipTarget",
@@ -240,28 +240,28 @@ export class OrikoSettingTab extends PluginSettingTab {
           },
           {
             name: "Preview width (px)",
-            desc: "Pixel width of generated video posters and GIF stills.",
+            desc: "How wide the stills made from videos and GIFs come out.",
             control: { type: "number", key: "thumbnailWidth" },
           },
           {
             name: "yt-dlp path",
-            desc: "Full path to the yt-dlp executable, used to fetch a post's own video. Leave empty to find it on PATH and in common install locations (Homebrew, winget, scoop, chocolatey, ~/.local/bin).",
+            desc: "Where yt-dlp lives, which is what fetches a post's own video. Leave it empty and Oriko goes looking (PATH, Homebrew, winget, scoop, chocolatey, ~/.local/bin).",
             control: { type: "text", key: "ytdlpPath" },
           },
           {
             name: "ffmpeg path",
-            desc: "Full path to the ffmpeg executable, used to render previews for formats the app cannot play. Leave empty to find it the same way.",
+            desc: "Where ffmpeg lives, which makes previews for anything Obsidian cannot play. Leave it empty and Oriko goes looking the same way.",
             control: { type: "text", key: "ffmpegPath" },
           },
         ],
       },
       {
         type: "group",
-        heading: "Grid settings",
+        heading: "Grids",
         items: [
           {
             name: "Grid settings apply to",
-            desc: "Tile size, the tile corners, filter properties and autoplay. Per grid, each wall keeps its own and you set them from the wall's own settings; anything a grid has not set follows what is here.",
+            desc: "Whether every wall looks the same, or each grid keeps its own tile size, corners, filter properties and autoplay. Per grid, you set those from Grid settings on the wall, and anything a grid has not set follows what is here.",
             aliases: ["per grid", "scope", "shared", "look"],
             control: {
               type: "dropdown",
@@ -280,7 +280,7 @@ export class OrikoSettingTab extends PluginSettingTab {
         items: [
           {
             name: "Top corner",
-            desc: "A date, shown as how long ago it was when you hover a tile.",
+            desc: "A date, shown as how long ago when you hover a tile.",
             aliases: ["badges", "hover", "date"],
             render: (setting) => {
               setting.addDropdown((dropdown) =>
@@ -293,7 +293,7 @@ export class OrikoSettingTab extends PluginSettingTab {
           },
           {
             name: "Bottom corner",
-            desc: "Any other property, its values in one pill. Text too long for the tile ticks across while you hover.",
+            desc: "Any other property, its values in one pill. Anything too long ticks across while you hover.",
             aliases: ["badges", "hover", "tags"],
             render: (setting) => {
               setting.addDropdown((dropdown) =>

@@ -902,7 +902,7 @@ export function openRemoveFolders(
     note:
       members === 0
         ? `${n === 1 ? "The folder is" : "They are"} empty. Nothing else changes.`
-        : `${members} ${plural(members, "clipping is", "clippings are")} inside. They can come back out onto the wall, or go to trash with ${them}.`,
+        : `${members} ${plural(members, "clipping is", "clippings are")} inside. They can come back onto the wall, or go to trash with ${them}.`,
     filters: false,
     active: 0,
     hints: PICK_HINTS,

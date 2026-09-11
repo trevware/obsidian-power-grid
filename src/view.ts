@@ -2054,12 +2054,6 @@ export class OrikoView extends ItemView {
     const own = perGrid ? this.lookOf(active) : undefined;
     const sizedHere = perGrid && this.plugin.settings.gridTileSizes[this.gridKey()] !== undefined;
 
-    /* A value this grid set for itself says so, so the menu answers whether
-       it is looking at this wall's answer or everyone's without being
-       opened. On All grids nothing is marked: there is only one answer. */
-    const mark = (value: string, overridden: boolean): string =>
-      overridden ? `${value} \u00b7 grid` : value;
-
     return [
       {
         icon: "layout-dashboard",
@@ -2067,7 +2061,7 @@ export class OrikoView extends ItemView {
         // The grid's name captions the group, once, rather than every row
         // repeating whose settings these are.
         heading: perGrid ? active.name : undefined,
-        detail: mark(stageLabel(look.tileSize), sizedHere),
+        detail: this.mark(stageLabel(look.tileSize), sizedHere),
         submenu: this.tileSizeItems(),
       },
       ...(perGrid ? this.gridLookItems(look, own) : []),
@@ -2131,26 +2125,45 @@ export class OrikoView extends ItemView {
       {
         icon: "sliders-horizontal",
         label: "Filter properties",
-        detail:
-          own?.filterProperties !== undefined
-            ? `${look.filterProperties.length} \u00b7 grid`
-            : String(look.filterProperties.length),
+        detail: this.mark(String(look.filterProperties.length), own?.filterProperties !== undefined),
         submenu: this.filterPropertyItems(look, own),
       },
       {
         icon: "play",
         label: "Autoplay videos",
-        detail: own?.autoplayVideo !== undefined ? "grid" : undefined,
-        detailIcon: own?.autoplayVideo === undefined && look.autoplayVideo ? "check" : undefined,
-        keepOpen: true,
-        onSelect: () => void this.setLookKey("autoplayVideo", !look.autoplayVideo),
+        // A submenu rather than a row that flips, so this one has the same
+        // way back to All grids the other three have.
+        detail: this.mark(look.autoplayVideo ? "On" : "Off", own?.autoplayVideo !== undefined),
+        submenu: [
+          {
+            icon: "",
+            label: "On",
+            detailIcon: look.autoplayVideo ? "check" : undefined,
+            onSelect: () => void this.setLookKey("autoplayVideo", true),
+          },
+          {
+            icon: "",
+            label: "Off",
+            detailIcon: look.autoplayVideo ? undefined : "check",
+            onSelect: () => void this.setLookKey("autoplayVideo", false),
+          },
+          ...this.inheritRow("autoplayVideo", own?.autoplayVideo !== undefined),
+        ],
       },
     ];
   }
 
   private slotLabel(value: string, overridden: boolean): string {
-    const name = value ? facetLabel(value) : "None";
-    return overridden ? `${name} \u00b7 grid` : name;
+    return this.mark(value ? facetLabel(value) : "None", overridden);
+  }
+
+  /**
+   * Marks a value this grid set for itself, so the menu answers whose answer
+   * it is showing without being opened. Nothing is marked while the switch
+   * is on All grids: there is only one answer to show.
+   */
+  private mark(value: string, overridden: boolean): string {
+    return overridden ? `${value} \u00b7 this grid` : value;
   }
 
   /** The properties a tile corner can show, the one in force ticked, and the
@@ -2207,15 +2220,16 @@ export class OrikoView extends ItemView {
   }
 
   /**
-   * The way back to the shared setting, on a submenu whose grid has set its
-   * own. Shown and inert otherwise, so the row does not come and go as you
-   * touch the thing above it.
+   * The way back, on a submenu whose grid has set a value of its own. Named
+   * for the switch's other setting, so the two read as the pair they are.
+   * Shown and inert otherwise, so the row does not come and go as you touch
+   * the thing above it.
    */
   private inheritRow(key: keyof GridLook, overridden: boolean): MenuItem[] {
     return [
       {
         icon: "undo-2",
-        label: "Use the shared setting",
+        label: "Follow all grids",
         divider: true,
         disabled: !overridden,
         onSelect: () => void this.clearLookKey(key),
@@ -2300,7 +2314,7 @@ export class OrikoView extends ItemView {
         ? [
             {
               icon: "undo-2",
-              label: "Use the shared setting",
+              label: "Follow all grids",
               divider: true,
               disabled: this.plugin.settings.gridTileSizes[this.gridKey()] === undefined,
               onSelect: () => void this.clearTileSize(),
@@ -2586,7 +2600,9 @@ export class OrikoView extends ItemView {
 
     if (blocked.length > 0) {
       new Notice(
-        `Oriko: ${blocked.join(", ")} stayed put. ${target} already has a folder by that name.`
+        blocked.length === 1
+          ? `Oriko: ${target} already has a folder called ${blocked[0]}`
+          : `Oriko: ${target} already has folders called ${blocked.join(", ")}`
       );
     }
     if (moved.length === 0) return;

@@ -364,7 +364,14 @@ export class GridRenderer {
     this.viewport.dataset.density = stage;
     if (width === this.targetColumnWidth) return;
     this.targetColumnWidth = width;
-    if (this.tiles.length > 0) this.relayout();
+    // Folders count as something to lay out. A grid can hold nothing but
+    // folders, and this read `this.tiles.length > 0` from before they
+    // existed, so such a wall stored the new width and never reflowed to it:
+    // shrink and expand did nothing until you left, changed it on a grid
+    // with clippings, and came back to a wall rebuilt at the stored width.
+    // A folder's height is measured off this width too, so it is not only
+    // the columns that were stale.
+    if (this.tiles.length > 0 || this.folders.length > 0) this.relayout();
   }
 
   private viewportSize(): { width: number; height: number } {

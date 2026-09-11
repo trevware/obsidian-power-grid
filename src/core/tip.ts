@@ -26,3 +26,22 @@ export function attachTip(button: HTMLElement, label: string, shortcut?: string)
 export function tipLabel(label: string, shortcut?: string): string {
   return shortcut ? `${label} (${shortcut})` : label;
 }
+
+/**
+ * Changes an attached tip's words in place.
+ *
+ * For a button whose meaning follows what is selected, rather than one that
+ * is rebuilt. Both halves are rewritten together: the drawn label and the
+ * hidden one are the same sentence said twice, and a screen reader hearing
+ * the stale half is the bug this avoids.
+ */
+export function retip(button: HTMLElement, label: string, shortcut?: string): void {
+  const tip = button.querySelector<HTMLElement>(".pg-tip");
+  if (tip) {
+    tip.empty();
+    tip.createSpan({ text: label });
+    if (shortcut) tip.createSpan({ cls: "pg-tip-key", text: shortcut });
+  }
+  const name = button.querySelector<HTMLElement>(".pg-sr-only");
+  if (name) name.setText(tipLabel(label, shortcut));
+}

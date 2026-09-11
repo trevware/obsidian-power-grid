@@ -1,9 +1,13 @@
 import { setIcon } from "obsidian";
-import { attachTip } from "./core/tip";
+import { attachTip, retip } from "./core/tip";
+
+/** Which kind of thing the bar is acting on. A selection is one or the other. */
+export type SelectionKind = "folders" | "clippings";
 
 export interface ActionBarHandlers {
   /** Opens the property menu for the selection, anchored to the button. */
   onProperties: (x: number, y: number) => void;
+  /** Deletes clippings, or asks what removing a folder should take with it. */
   onDelete: () => void;
   /** Opens the list of grids to move the selection to, anchored to the button. */
   onMoveToGrid: (x: number, y: number) => void;
@@ -28,6 +32,9 @@ export class ActionBar {
   private count: HTMLElement;
   private properties: HTMLElement;
   private folder: HTMLElement;
+  private trash: HTMLElement;
+  private folderable = false;
+  private kind: SelectionKind = "clippings";
 
   constructor(container: HTMLElement, handlers: ActionBarHandlers) {
     this.root = container.createDiv({ cls: "pg-actionbar" });
@@ -67,12 +74,31 @@ export class ActionBar {
       handlers.onMoveToFolder(x, y);
     });
 
-    this.button("trash-2", "Delete", "⌫", handlers.onDelete);
+    this.trash = this.button("trash-2", "Delete", "⌫", handlers.onDelete);
   }
 
   /** Folders live on grids that can be filed into; elsewhere the button goes. */
   setFolderable(folderable: boolean): void {
-    this.folder.toggle(folderable);
+    this.folderable = folderable;
+    this.applyKind();
+  }
+
+  /**
+   * Shows the buttons that fit what is picked.
+   *
+   * A folder has no properties to edit and does not go inside another
+   * folder, so those two leave rather than sit there inert: the bar is four
+   * icons wide and a dead one is worse than a missing one. Where it goes and
+   * whether it stays are the two questions a folder does answer, and they
+   * are the two that remain.
+   */
+  private applyKind(): void {
+    const clippings = this.kind === "clippings";
+    this.properties.toggle(clippings);
+    this.folder.toggle(clippings && this.folderable);
+    // Removing a folder takes nothing away on its own, so the button says
+    // so; what it does to the clippings inside is the question it asks.
+    retip(this.trash, clippings ? "Delete" : "Remove", "⌫");
   }
 
   /** Where the property menu opens from, whether by click or by key. */
@@ -97,9 +123,19 @@ export class ActionBar {
     return button;
   }
 
-  setSelection(ids: string[]): void {
+  setSelection(ids: string[], kind: SelectionKind = "clippings"): void {
     const n = ids.length;
-    this.count.setText(n === 1 ? "1 selected" : `${n} selected`);
+    this.kind = kind;
+    this.applyKind();
+    // Folders say so, because the bar is otherwise identical to the one a
+    // handful of clippings raises and the actions are not.
+    this.count.setText(
+      kind === "folders"
+        ? `${n} ${n === 1 ? "folder" : "folders"} selected`
+        : n === 1
+          ? "1 selected"
+          : `${n} selected`
+    );
     this.root.toggleClass("is-visible", n > 0);
   }
 

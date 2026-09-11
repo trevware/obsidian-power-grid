@@ -19,6 +19,7 @@ import {
   openGridsManager,
   openNewSmartGrid,
   openNewGrid,
+  openRemoveFolders,
   openFolderEditor,
   openRemoveFolder,
 } from "./grid-sheets";
@@ -26,7 +27,7 @@ import { DetailView } from "./detail";
 import { classifyDrop, describeSkipped, titleForDropped, wantsDrop } from "./core/drop";
 import type { MenuItem } from "./context-menu";
 import type { FoldersController, GridsController } from "./grid-sheets";
-import { FOLDER_WIDTHS, folderTileId, partitionWall } from "./core/folders";
+import { FOLDER_WIDTHS, folderTileId, partitionWall, planFolderMove } from "./core/folders";
 import { History } from "./core/history";
 import type { FolderSpace, FolderTileModel, FolderWidth } from "./core/folders";
 import { GridRenderer } from "./grid";
@@ -226,7 +227,11 @@ export class OrikoView extends ItemView {
     // way a video moves on such a wall.
     this.grid.onHoverMedia = (media) => this.playback?.hover(media);
 
-    this.grid.onDeleteRequested = (ids: string[]) => this.confirmDelete(ids);
+    this.grid.onDeleteRequested = (ids: string[]) => {
+      const folders = this.selectedFolders();
+      if (folders.length > 0) this.confirmRemoveFolders(folders);
+      else this.confirmDelete(ids);
+    };
     this.grid.onPropertiesRequested = (ids: string[]) => {
       const anchor = this.actionBar?.propertiesAnchor() ?? { x: 0, y: 0 };
       this.editProperties(ids, anchor.x, anchor.y);
@@ -234,15 +239,26 @@ export class OrikoView extends ItemView {
 
     this.actionBar = new ActionBar(this.contentEl, {
       onProperties: (x, y) => this.editProperties(this.grid?.selectedIds() ?? [], x, y),
-      onDelete: () => this.confirmDelete(this.grid?.selectedIds() ?? []),
-      onMoveToGrid: (x, y) =>
-        this.menu?.open(this.gridMoveRows(this.grid?.selectedIds() ?? []), x, y),
+      onDelete: () => this.removeSelection(),
+      // Both routed by what is picked: the bar is the same four buttons
+      // whichever it is, and the kind is what they mean.
+      onMoveToGrid: (x, y) => {
+        const folders = this.selectedFolders();
+        const rows =
+          folders.length > 0
+            ? this.folderGridMoveRows(folders)
+            : this.gridMoveRows(this.grid?.selectedIds() ?? []);
+        this.menu?.open(rows, x, y);
+      },
       onMoveToFolder: (x, y) =>
         this.menu?.open(this.folderMoveRows(this.grid?.selectedIds() ?? []), x, y),
       onDone: () => this.grid?.clearSelection(),
     });
     this.grid.onSelectionChanged = (ids: string[]) => {
-      this.actionBar?.setSelection(ids);
+      this.actionBar?.setSelection(
+        ids,
+        this.grid?.selectionKind() === "folders" ? "folders" : "clippings"
+      );
       this.actionBar?.setFolderable(this.canFile());
       if (ids.length === 0) this.releaseRefresh();
       // The wall's own controls give up the bottom to the selection bar,
@@ -931,7 +947,9 @@ export class OrikoView extends ItemView {
         icon: "plus",
         label: "New grid\u2026",
         divider: true,
-        onSelect: () => this.promptNewGrid(ids),
+        // Moved rather than followed: the clippings leave this wall, and the
+        // notice says where they went, which is how every other move reads.
+        onSelect: () => this.promptNewGrid((saved) => void this.moveTo(ids, saved.name)),
       },
     ];
   }
@@ -2128,13 +2146,17 @@ export class OrikoView extends ItemView {
     );
   }
 
-  /** Opens the editor for a new grid; `seed` is moved onto it once it is made. */
-  private promptNewGrid(seed: string[] = []): void {
+  /**
+   * Opens the editor for a new grid, and hands the finished grid to `then`.
+   *
+   * That is how the move rows file onto a grid that did not exist when the
+   * menu was opened: clippings and folders each pass their own move, and
+   * neither has to know the other exists.
+   */
+  private promptNewGrid(then?: (saved: GridSpace) => void): void {
     if (!this.sheet) return;
     openNewGrid(this.sheet, this.gridsController(), (saved) => {
-      // Moved rather than followed: the clippings leave this wall, and the
-      // notice says where they went, which is how every other move reads.
-      if (seed.length > 0) void this.moveTo(seed, saved.name);
+      then?.(saved);
       this.refresh();
     });
   }
@@ -2252,6 +2274,190 @@ export class OrikoView extends ItemView {
     });
   }
 
+  /**
+   * The folders the selection holds, in wall order, or none when it holds
+   * clippings. Read from the wall's own list rather than from the ids, so a
+   * folder that has since gone cannot come back through a stale selection.
+   */
+  private selectedFolders(): FolderSpace[] {
+    if (this.grid?.selectionKind() !== "folders") return [];
+    const picked = new Set(this.grid.selectedIds());
+    return this.foldersHere().filter((folder) => picked.has(folderTileId(folder)));
+  }
+
+  /**
+   * The grids a folder can move to, ending in New grid.
+   *
+   * Manual grids only. A smart view computes its membership and nothing is
+   * filed into one, so a folder on it would hold clippings that no wall
+   * reads: the same reason fileableGrid refuses. The grid it is already on
+   * is shown and inert, so the set reads whole.
+   */
+  private folderGridMoveRows(folders: FolderSpace[]): MenuItem[] {
+    const home = this.plugin.settings.homeGridName;
+    const { manual } = groupedGrids(this.allGrids());
+    const here = this.folderGridKey();
+
+    return [
+      ...manual.map(({ grid }) => ({
+        icon: grid.icon,
+        label: grid.name,
+        disabled: (grid.name === home ? "" : grid.name) === here,
+        onSelect: () => void this.moveFoldersTo(folders, grid.name),
+      })),
+      {
+        icon: "plus",
+        label: "New grid\u2026",
+        divider: true,
+        onSelect: () =>
+          this.promptNewGrid((saved) => void this.moveFoldersTo(folders, saved.name)),
+      },
+    ];
+  }
+
+  /**
+   * Moves folders to another grid, definitions and members together.
+   *
+   * Both halves have to move or the folder is left holding clippings that
+   * are somewhere else: the definition's `grid` and each member's `grid:`
+   * say the same thing, and assign writes `grid` and `folder` in one call so
+   * they cannot come apart mid-move. A name the target already uses stays
+   * where it is and the rest go, rather than the whole move failing over one
+   * of them.
+   */
+  private async moveFoldersTo(folders: FolderSpace[], target: string): Promise<void> {
+    const settings = this.plugin.settings;
+    const key = target === settings.homeGridName ? "" : target;
+    const { moved, blocked } = planFolderMove(folders, key, settings.folders);
+
+    if (blocked.length > 0) {
+      new Notice(
+        `Oriko: ${blocked.join(", ")} stayed put. ${target} already has a folder by that name.`
+      );
+    }
+    if (moved.length === 0) return;
+
+    /*
+     * Read before anything is written, afterwards the members answer to the
+     * grid they have just been moved to. `origin` is copied out for the same
+     * reason: a FolderSpace here is the registry's own object, so writing
+     * the new key into it also rewrites what `folder.grid` says, and a redo
+     * would then go looking on the grid it had already left.
+     */
+    const carried = moved.map((folder) => ({
+      name: folder.name,
+      origin: folder.grid,
+      members: this.folderMembers(folder.name),
+    }));
+    const placement = this.placementOf(carried.flatMap((entry) => entry.members));
+
+    const apply = async (): Promise<void> => {
+      for (const { name, origin, members } of carried) {
+        const entry = settings.folders.find((f) => f.grid === origin && f.name === name);
+        if (entry) entry.grid = key;
+        if (members.length > 0) await this.assign(members, target, name);
+      }
+      await this.plugin.saveSettings();
+      this.refresh();
+    };
+
+    await apply();
+    this.grid?.clearSelection();
+    new Notice(
+      moved.length === 1
+        ? `Oriko: ${moved[0].name} moved to ${target}`
+        : `Oriko: ${moved.length} folders moved to ${target}`
+    );
+
+    this.history.push({
+      label: moved.length === 1 ? `Move ${moved[0].name}` : `Move ${moved.length} folders`,
+      undo: async () => {
+        for (const { name, origin } of carried) {
+          const entry = settings.folders.find((f) => f.grid === key && f.name === name);
+          if (entry) entry.grid = origin;
+        }
+        await this.plugin.saveSettings();
+        await this.restorePlacement(placement);
+        this.refresh();
+      },
+      redo: apply,
+    });
+  }
+
+  /** The bar's trash, which means two different things by what is picked. */
+  private removeSelection(): void {
+    const folders = this.selectedFolders();
+    if (folders.length > 0) this.confirmRemoveFolders(folders);
+    else this.confirmDelete(this.grid?.selectedIds() ?? []);
+  }
+
+  /**
+   * Asks what removing folders should take with it.
+   *
+   * Removing a folder deletes a definition and nothing else, which is not
+   * what everyone means by it, so the clippings inside are the question
+   * rather than an assumption. Deleting goes through the same path a
+   * clipping's own delete does, reference-counted media included.
+   */
+  private confirmRemoveFolders(folders: FolderSpace[]): void {
+    if (!this.sheet) return;
+    const members = folders.flatMap((folder) => this.folderMembers(folder.name));
+    openRemoveFolders(this.sheet, folders, members.length, {
+      onRemove: () => void this.removeFolderDefs(folders),
+      onDelete: () => {
+        const media = this.doomedMedia(members);
+        void this.deleteClippings(members, media.paths).then(() =>
+          this.removeFolderDefs(folders)
+        );
+      },
+    });
+  }
+
+  /**
+   * Takes several folder definitions out at once, as one step of history.
+   *
+   * Spliced back to front so the indices ahead of each one still hold, and
+   * put back front to back on the way in. Members are never rewritten, the
+   * same as removing one: they keep a key that reads as loose while the
+   * folder is gone and as the folder again the moment it is back.
+   */
+  private async removeFolderDefs(folders: FolderSpace[], record = true): Promise<void> {
+    const settings = this.plugin.settings;
+    const removed = folders
+      .map((folder) => ({
+        folder,
+        index: settings.folders.findIndex(
+          (f) => f.grid === folder.grid && f.name === folder.name
+        ),
+      }))
+      .filter((entry) => entry.index >= 0)
+      .sort((a, b) => b.index - a.index);
+    if (removed.length === 0) return;
+
+    for (const { index } of removed) settings.folders.splice(index, 1);
+    if (folders.some((folder) => folder.name === this.openFolder)) {
+      this.openFolder = null;
+      this.spaceBar?.setFolder(null);
+    }
+    await this.plugin.saveSettings();
+    this.grid?.clearSelection();
+    this.refresh();
+    if (!record) return;
+
+    this.history.push({
+      label:
+        removed.length === 1 ? `Remove ${removed[0].folder.name}` : `Remove ${removed.length} folders`,
+      undo: async () => {
+        for (const { folder, index } of [...removed].reverse()) {
+          settings.folders.splice(Math.min(index, settings.folders.length), 0, folder);
+        }
+        await this.plugin.saveSettings();
+        this.refresh();
+      },
+      redo: () => this.removeFolderDefs(folders, false),
+    });
+  }
+
   /** Opens the editor for a new folder; `seed` is moved in once it is made. */
   private promptNewFolder(seed: string[]): void {
     if (!this.sheet || !this.canFile()) return;
@@ -2321,6 +2527,17 @@ export class OrikoView extends ItemView {
   private openFolderMenu(name: string, x: number, y: number): void {
     const folder = this.foldersHere().find((f) => f.name === name);
     if (!folder) return;
+
+    /*
+     * What the menu acts on: the whole selection when this folder is part of
+     * it, and this folder alone when it is not. The rows below that name one
+     * folder stay on this one either way, because opening, editing and
+     * resizing are things you do to a folder rather than to a pile of them.
+     */
+    const picked = this.selectedFolders();
+    const batch = picked.some((f) => f.name === name) ? picked : [folder];
+    const many = batch.length > 1;
+
     const labels: Record<string, string> = { 1: "Small", 2: "Wide", 3: "Extra wide" };
     const items: MenuItem[] = [
       { icon: "folder-open", label: "Open", onSelect: () => this.enterFolder(name) },
@@ -2329,6 +2546,11 @@ export class OrikoView extends ItemView {
         label: "Edit folder",
         divider: true,
         onSelect: () => this.editFolder(folder),
+      },
+      {
+        icon: "corner-up-right",
+        label: many ? `Move ${batch.length} folders to grid` : "Move to grid",
+        submenu: this.folderGridMoveRows(batch),
       },
       {
         icon: "move-horizontal",
@@ -2343,10 +2565,12 @@ export class OrikoView extends ItemView {
       },
       {
         icon: "trash-2",
-        label: "Remove folder",
+        label: many ? `Remove ${batch.length} folders` : "Remove folder",
         divider: true,
         destructive: true,
-        onSelect: () => this.removeFolder(folder),
+        // One folder keeps the plain confirmation it has always had; a batch
+        // goes through the one that asks about the clippings inside.
+        onSelect: () => (many ? this.confirmRemoveFolders(batch) : this.removeFolder(folder)),
       },
     ];
     this.menu?.open(items, x, y);

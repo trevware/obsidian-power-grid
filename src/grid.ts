@@ -781,7 +781,11 @@ export class GridRenderer {
       }
 
       const modified = event.metaKey || event.ctrlKey || event.altKey;
-      if ((event.key === "p" || event.key === "P") && this.selection.size > 0 && !modified) {
+      if (
+        (event.key === "p" || event.key === "P") &&
+        this.selectionKind() === "clippings" &&
+        !modified
+      ) {
         event.preventDefault();
         this.onPropertiesRequested([...this.selection]);
         return;
@@ -795,7 +799,7 @@ export class GridRenderer {
         return;
       }
 
-      if (event.key === "e" && this.selection.size > 0) {
+      if (event.key === "e" && this.selectionKind() === "clippings") {
         event.preventDefault();
         this.onExportRequested([...this.selection]);
         return;
@@ -891,7 +895,7 @@ export class GridRenderer {
       this.selecting = true;
       this.marqueeMoved = false;
       this.viewport.addClass("is-selecting");
-      this.selectionBase = new Set(this.selection);
+      this.selectionBase = new Set(this.baseFor("clippings"));
       const point = this.toContentPoint(event.clientX, event.clientY);
       this.marqueeOrigin = point;
       this.viewport.setPointerCapture(event.pointerId);
@@ -964,6 +968,30 @@ export class GridRenderer {
     this.marquee.style.height = `${rect.h * this.camera.zoom}px`;
   }
 
+  /**
+   * What the selection currently holds, or null when it holds nothing.
+   *
+   * A selection is folders or clippings, never both: the two answer to
+   * different actions, and a bar whose every button meant two things would
+   * be the worse half of that trade. The first member settles it, because
+   * the rule below is what puts them in.
+   */
+  selectionKind(): "folders" | "clippings" | null {
+    for (const id of this.selection) return this.folderById.has(id) ? "folders" : "clippings";
+    return null;
+  }
+
+  /**
+   * The selection a click of this kind builds on: the live one when it is
+   * already that kind, and an empty one when it is the other. Picking a
+   * folder therefore drops the clippings, and picking a clipping drops the
+   * folders, with no separate step that clears them.
+   */
+  private baseFor(kind: "folders" | "clippings"): ReadonlySet<string> {
+    const current = this.selectionKind();
+    return current === null || current === kind ? this.selection : new Set<string>();
+  }
+
   private applySelection(next: Set<string>): void {
     const changed =
       next.size !== this.selection.size || [...next].some((id) => !this.selection.has(id));
@@ -978,6 +1006,12 @@ export class GridRenderer {
   private paintSelection(): void {
     for (const [id, element] of this.mounted) {
       element.root.toggleClass("is-selected", this.selection.has(id));
+    }
+    // Folder cards are not pooled and so live in their own map, but they
+    // wear the same ring. Painted on every render pass, which is what
+    // catches a folder that scrolled into view already selected.
+    for (const [id, root] of this.mountedFolders) {
+      root.toggleClass("is-selected", this.selection.has(id));
     }
   }
 
@@ -1724,12 +1758,12 @@ export class GridRenderer {
       // Once a long press has opened selection mode, a tap adds and removes
       // rather than opening. It is cmd-click, without a cmd key to hold.
       if (this.touchSelecting) {
-        this.selectOnly(model.id, toggleSelection(this.selection, model.id));
+        this.selectOnly(model.id, toggleSelection(this.baseFor("clippings"), model.id));
         return;
       }
 
       if (event.metaKey || event.ctrlKey) {
-        this.selectOnly(model.id, toggleSelection(this.selection, model.id));
+        this.selectOnly(model.id, toggleSelection(this.baseFor("clippings"), model.id));
         return;
       }
 
@@ -1739,7 +1773,7 @@ export class GridRenderer {
             this.tiles.map((t) => t.id),
             this.selectionAnchor,
             model.id,
-            this.selection
+            this.baseFor("clippings")
           )
         );
         return;
@@ -1938,13 +1972,25 @@ export class GridRenderer {
       if (this.panMoved || this.touchSelecting) return;
       if (root.hasClass("is-handles")) return;
       event.stopPropagation();
+      // A plain click still opens the folder; the modifier is what picks it
+      // up, exactly as it does on a card. Shift is left out: folders sit in
+      // stored order at the head of the wall and there are a handful of
+      // them, so a range has nothing to save.
+      if (event.metaKey || event.ctrlKey) {
+        this.selectOnly(id, toggleSelection(this.baseFor("folders"), id));
+        return;
+      }
       this.onOpenFolder(this.folderById.get(id)?.folder.name ?? "");
     };
     root.oncontextmenu = (event: MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
       const name = this.folderById.get(id)?.folder.name;
-      if (name) this.onFolderContextRequested(name, event.clientX, event.clientY);
+      if (!name) return;
+      // Right-clicking outside the selection acts on that folder alone, the
+      // same rule the cards follow.
+      if (!this.selection.has(id)) this.selectOnly(id, new Set([id]));
+      this.onFolderContextRequested(name, event.clientX, event.clientY);
     };
     root.addEventListener("pointerdown", (event: PointerEvent) => {
       if (event.pointerType !== "touch") return;

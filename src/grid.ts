@@ -226,6 +226,8 @@ export class GridRenderer {
   onExportRequested: (ids: string[]) => void = () => {};
   onOpenFolder: (name: string) => void = () => {};
   onFolderContextRequested: (name: string, x: number, y: number) => void = () => {};
+  /** Right-click on the wall itself, with no card or folder under it. */
+  onSpaceContextRequested: (x: number, y: number) => void = () => {};
   /** A corner drag ended on a different width. The caller persists it. */
   onFolderResized: (name: string, width: FolderWidth) => void = () => {};
   onOpenDetail: (
@@ -935,6 +937,21 @@ export class GridRenderer {
 
     this.viewport.addEventListener("pointerup", finish);
     this.viewport.addEventListener("pointercancel", finish);
+
+    /*
+     * Right-clicking the wall itself asks what can be made here.
+     *
+     * Cards and folders stop their own menu from propagating, so anything
+     * reaching the viewport landed on nothing; the closest() is a second
+     * line in case a card ever forgets. The selection is left alone: a
+     * right-click never clears one, and this menu is about the wall rather
+     * than about whatever happens to be picked.
+     */
+    this.viewport.addEventListener("contextmenu", (event: MouseEvent) => {
+      if ((event.target as HTMLElement | null)?.closest(".pg-tile")) return;
+      event.preventDefault();
+      this.onSpaceContextRequested(event.clientX, event.clientY);
+    });
   }
 
   private drawMarquee(rect: Rect): void {

@@ -254,6 +254,10 @@ export class OrikoView extends ItemView {
     this.sheet = new Sheet(this.contentEl);
     this.menu.onClosed = () => this.releaseRefresh();
     this.sheet.onClosed = () => this.releaseRefresh();
+    // The same rows as the wall's plus button: right-clicking the wall is
+    // the other way of asking what can be made here.
+    this.grid.onSpaceContextRequested = (x, y) => this.openCreate(x, y);
+
     this.grid.onContextRequested = (ids, x, y) => {
       this.edited.clear();
       this.vocabularies.clear();

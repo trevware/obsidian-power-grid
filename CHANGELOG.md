@@ -5,6 +5,17 @@ All notable changes to Oriko will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.58] - 2026-09-11
+
+### Added
+- **Each grid can now keep its own look.** Settings → Oriko → Grids → Grid settings apply to, set to Per grid, and tile size, the tile corners, filter properties and autoplay stop being one answer for the whole vault. You set them from Grid settings on the wall, where they appear under the grid's name, and a value a grid has set for itself reads "this grid" beside it. Anything a grid hasn't set follows what's in Settings, so a wall you've never touched looks the way it always did, and Follow all grids at the foot of each menu is the way back. Switching to All grids clears nothing: a grid keeps what you gave it and has it back if you switch again. Tile size is the one that stays on this device, since a grid set to Huge on the desktop would arrive on a phone as one column per row.
+- **Folders can be selected, several at a time.** ⌘-click a folder card to pick it up (a plain click still opens it) and the selection bar takes over: Move to grid takes the folders and everything inside them across in one go, and the trash asks whether the clippings should come back onto the wall or go with the folders. Right-click a folder that's part of a selection and the menu acts on all of them.
+- **Move to grid can make the grid.** The list now ends in New grid…, so a selection can go somewhere that doesn't exist yet without losing the selection to make it first. Folders get the same.
+- **Right-click the wall itself to make something on it.** Empty space now opens the same menu as the + button: Clip, New grid, New smart view, New folder, right where you're looking instead of down in the corner.
+
+### Changed
+- **The settings descriptions say more in fewer words**, and the per-grid switch says where its values are set.
+
 ## [0.1.57] - 2026-09-07
 
 ### Changed

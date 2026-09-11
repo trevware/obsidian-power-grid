@@ -294,6 +294,10 @@ export class GridRenderer {
    * reaches tiles already on screen.
    */
   setTileSlots(slots: TileSlots): void {
+    // Repainting every mounted tile's badges is real work, and this is now
+    // called on every settings save rather than only when a corner changes.
+    // Same bargain setDensity makes one method up.
+    if (slots.date === this.tileSlots.date && slots.property === this.tileSlots.property) return;
     this.tileSlots = { ...slots };
     for (const [id, element] of this.mounted) {
       const model = this.byId.get(id);

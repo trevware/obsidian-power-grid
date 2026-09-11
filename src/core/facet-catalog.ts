@@ -78,3 +78,35 @@ export function surveyProperties(records: ClippingRecord[]): PropertyStat[] {
       a.key.localeCompare(b.key)
   );
 }
+
+/**
+ * The properties worth offering for one of the two tile corners.
+ *
+ * Dates for the top corner and everything else for the bottom, split by what
+ * the values actually look like rather than by the key's name. The current
+ * choice is kept at the head even when it no longer survives the survey, so
+ * a corner set months ago still shows what it is set to instead of reading
+ * as unset.
+ */
+export function slotCandidates(
+  records: ClippingRecord[],
+  dates: boolean,
+  current: string
+): string[] {
+  const byKey = new Map<string, Set<string>>();
+  for (const record of records) {
+    for (const [key, list] of Object.entries(record.properties)) {
+      if (list.length === 0) continue;
+      let seen = byKey.get(key);
+      if (!seen) byKey.set(key, (seen = new Set()));
+      for (const value of list) seen.add(value);
+    }
+  }
+
+  const keys = surveyProperties(records)
+    .map((stat) => stat.key)
+    .filter((key) => isDateProperty(byKey.get(key) ?? []) === dates);
+
+  if (current && !keys.includes(current)) keys.unshift(current);
+  return keys;
+}

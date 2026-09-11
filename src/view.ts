@@ -28,6 +28,9 @@ import { classifyDrop, describeSkipped, titleForDropped, wantsDrop } from "./cor
 import type { MenuItem } from "./context-menu";
 import type { FoldersController, GridsController } from "./grid-sheets";
 import { FOLDER_WIDTHS, folderTileId, partitionWall, planFolderMove } from "./core/folders";
+import { resolveLook } from "./core/look";
+import { slotCandidates, surveyProperties } from "./core/facet-catalog";
+import type { GridLook, ResolvedLook } from "./core/look";
 import { History } from "./core/history";
 import type { FolderSpace, FolderTileModel, FolderWidth } from "./core/folders";
 import { GridRenderer } from "./grid";
@@ -209,12 +212,9 @@ export class OrikoView extends ItemView {
     };
 
     this.grid = new GridRenderer(this.app, this.contentEl);
-    this.grid.setDensity(this.plugin.settings.tileSize);
+    this.grid.setDensity(this.look().tileSize);
     this.grid.setTileSlots(this.tileSlots());
-    this.playback = new PlaybackController(
-      this.grid.viewportEl,
-      this.plugin.settings.autoplayVideo
-    );
+    this.playback = new PlaybackController(this.grid.viewportEl, this.look().autoplayVideo);
 
     this.grid.onRendered = () => {
       this.playback?.prune();
@@ -411,10 +411,10 @@ export class OrikoView extends ItemView {
       onOpenNote: (id) => this.openNote(id),
       onEditProperties: (id, x, y) => this.editProperties([id], x, y),
       isMenuOpen: () => this.menu?.isOpen ?? false,
-    }, () => this.plugin.settings.filterProperties);
+    }, () => this.look().filterProperties);
     this.detail.onClosed = () => {
       this.grid?.focusTile(null);
-      this.playback?.setEnabled(this.plugin.settings.autoplayVideo);
+      this.playback?.setEnabled(this.look().autoplayVideo);
     };
     this.grid.onOpenDetail = (model, origin) => {
       // Hidden when the stage appears, not on click: the media's true size
@@ -698,8 +698,26 @@ export class OrikoView extends ItemView {
     this.grid?.setTileSlots(this.tileSlots());
   }
 
+  /**
+   * Puts the five look settings onto the wall.
+   *
+   * Called on a grid switch, after an edit to a look, and after the settings
+   * tab moves a shared value, since any of the three can change what is in
+   * force here without a tile changing. Filter properties need no call: the
+   * filter menu and the detail panel both read the accessor as they open.
+   */
+  applyLook(): void {
+    const look = this.look();
+    this.grid?.setDensity(look.tileSize);
+    this.grid?.setTileSlots({ date: look.tileDate, property: look.tileProperty });
+    // The detail view restores playback on close, so obeying the setting
+    // underneath it would set the wall playing behind the backdrop.
+    if (!this.detail?.isOpen) this.playback?.setEnabled(look.autoplayVideo);
+  }
+
   private tileSlots(): { date: string; property: string } {
-    return { date: this.plugin.settings.tileDate, property: this.plugin.settings.tileProperty };
+    const look = this.look();
+    return { date: look.tileDate, property: look.tileProperty };
   }
 
   /** Public: the ⌘K command in main.ts drives the palette through this. */
@@ -1175,12 +1193,14 @@ export class OrikoView extends ItemView {
     this.refresh({ replace: true });
   }
 
+  /**
+   * Called after every settings save, which is how an open wall hears about
+   * one. Everything a wall is drawn with goes through the look, so there is
+   * one thing to call and no way to add a setting that silently does not
+   * take effect.
+   */
   applyLiveSettings(): void {
-    // Not while the detail view is up. It turns playback off deliberately and
-    // restores it on close, so obeying the setting here would set the wall
-    // playing behind the backdrop.
-    if (this.detail?.isOpen) return;
-    this.playback?.setEnabled(this.plugin.settings.autoplayVideo);
+    this.applyLook();
   }
 
   private paint(options: { replace?: boolean }): void {
@@ -1331,11 +1351,7 @@ export class OrikoView extends ItemView {
    * buckets against today when you next touch the filter.
    */
   private defs(): FacetDef[] {
-    return typedFacets(
-      facetDefs(this.plugin.settings.filterProperties),
-      this.facets,
-      Date.now()
-    );
+    return typedFacets(facetDefs(this.look().filterProperties), this.facets, Date.now());
   }
 
   /**
@@ -1592,6 +1608,9 @@ export class OrikoView extends ItemView {
     this.filter = emptyFilter();
     this.openFolder = null;
     this.spaceBar?.setFolder(null);
+    // Before the repaint, so the arriving wall is laid out to the grid's own
+    // density rather than to the last one's and reflowed a frame later.
+    this.applyLook();
     // replace, not add: departing tiles go straight back to the pool so the
     // arrivals can recycle them, and the camera is placed rather than tweened.
     // The arrivals still pop.
@@ -2030,14 +2049,28 @@ export class OrikoView extends ItemView {
   private settingsItems(): MenuItem[] {
     const active = this.activeGrid();
     const isHome = this.activeGridIndex() === -1;
+    const look = this.look();
+    const perGrid = this.plugin.settings.gridLookScope === "grid";
+    const own = perGrid ? this.lookOf(active) : undefined;
+    const sizedHere = perGrid && this.plugin.settings.gridTileSizes[this.gridKey()] !== undefined;
+
+    /* A value this grid set for itself says so, so the menu answers whether
+       it is looking at this wall's answer or everyone's without being
+       opened. On All grids nothing is marked: there is only one answer. */
+    const mark = (value: string, overridden: boolean): string =>
+      overridden ? `${value} \u00b7 grid` : value;
 
     return [
       {
         icon: "layout-dashboard",
         label: "Tile size",
-        detail: stageLabel(this.plugin.settings.tileSize),
+        // The grid's name captions the group, once, rather than every row
+        // repeating whose settings these are.
+        heading: perGrid ? active.name : undefined,
+        detail: mark(stageLabel(look.tileSize), sizedHere),
         submenu: this.tileSizeItems(),
       },
+      ...(perGrid ? this.gridLookItems(look, own) : []),
       {
         icon: "pencil",
         label: "Edit grid",
@@ -2071,8 +2104,170 @@ export class OrikoView extends ItemView {
    * watching it; the names are for going straight to the one you want. Every
    * row keeps the menu open, since one press is rarely the last.
    */
+  /**
+   * The rest of the look, shown only while each grid keeps its own.
+   *
+   * On All grids these stay in the settings tab: there is one answer there
+   * and putting it on every wall's menu as well would be two doors onto one
+   * value. Per grid the wall is where the answer belongs, because the answer
+   * is about the wall you are looking at.
+   */
+  private gridLookItems(look: ResolvedLook, own: GridLook | undefined): MenuItem[] {
+    const slot = (
+      key: "tileDate" | "tileProperty",
+      label: string,
+      icon: string,
+      dates: boolean
+    ): MenuItem => ({
+      icon,
+      label,
+      detail: this.slotLabel(look[key], own?.[key] !== undefined),
+      submenu: this.slotItems(key, look[key], own?.[key] !== undefined, dates),
+    });
+
+    return [
+      slot("tileDate", "Top corner", "calendar", true),
+      slot("tileProperty", "Bottom corner", "tag", false),
+      {
+        icon: "sliders-horizontal",
+        label: "Filter properties",
+        detail:
+          own?.filterProperties !== undefined
+            ? `${look.filterProperties.length} \u00b7 grid`
+            : String(look.filterProperties.length),
+        submenu: this.filterPropertyItems(look, own),
+      },
+      {
+        icon: "play",
+        label: "Autoplay videos",
+        detail: own?.autoplayVideo !== undefined ? "grid" : undefined,
+        detailIcon: own?.autoplayVideo === undefined && look.autoplayVideo ? "check" : undefined,
+        keepOpen: true,
+        onSelect: () => void this.setLookKey("autoplayVideo", !look.autoplayVideo),
+      },
+    ];
+  }
+
+  private slotLabel(value: string, overridden: boolean): string {
+    const name = value ? facetLabel(value) : "None";
+    return overridden ? `${name} \u00b7 grid` : name;
+  }
+
+  /** The properties a tile corner can show, the one in force ticked, and the
+      way back to the shared setting when this grid has set its own. */
+  private slotItems(
+    key: "tileDate" | "tileProperty",
+    current: string,
+    overridden: boolean,
+    dates: boolean
+  ): MenuItem[] {
+    const keys = slotCandidates(this.plugin.index.records(), dates, current);
+    const rows: MenuItem[] = [
+      {
+        icon: "",
+        label: "None",
+        detailIcon: current === "" ? "check" : undefined,
+        onSelect: () => void this.setLookKey(key, ""),
+      },
+      ...keys.map((candidate, i) => ({
+        icon: "",
+        label: facetLabel(candidate),
+        detailIcon: candidate === current ? "check" : undefined,
+        divider: i === 0,
+        onSelect: () => void this.setLookKey(key, candidate),
+      })),
+    ];
+    return [...rows, ...this.inheritRow(key, overridden)];
+  }
+
+  /** The filter facets this grid offers, each a toggle. */
+  private filterPropertyItems(look: ResolvedLook, own: GridLook | undefined): MenuItem[] {
+    const enabled = look.filterProperties;
+    const candidates = [
+      ...enabled,
+      ...surveyProperties(this.plugin.index.records())
+        .filter((stat) => stat.suggested && !enabled.includes(stat.key))
+        .map((stat) => stat.key),
+    ];
+
+    return [
+      ...candidates.map((key) => ({
+        icon: "",
+        label: facetLabel(key),
+        detailIcon: enabled.includes(key) ? "check" : undefined,
+        keepOpen: true,
+        onSelect: () =>
+          void this.setLookKey(
+            "filterProperties",
+            enabled.includes(key) ? enabled.filter((k) => k !== key) : [...enabled, key]
+          ),
+      })),
+      ...this.inheritRow("filterProperties", own?.filterProperties !== undefined),
+    ];
+  }
+
+  /**
+   * The way back to the shared setting, on a submenu whose grid has set its
+   * own. Shown and inert otherwise, so the row does not come and go as you
+   * touch the thing above it.
+   */
+  private inheritRow(key: keyof GridLook, overridden: boolean): MenuItem[] {
+    return [
+      {
+        icon: "undo-2",
+        label: "Use the shared setting",
+        divider: true,
+        disabled: !overridden,
+        onSelect: () => void this.clearLookKey(key),
+      },
+    ];
+  }
+
+  /**
+   * Writes one look value where the scope says it belongs: onto this grid
+   * while each keeps its own, and onto the shared setting otherwise. One
+   * function, because the menu rows are the same rows either way and only
+   * the destination moves.
+   */
+  private async setLookKey<K extends keyof GridLook>(
+    key: K,
+    value: NonNullable<GridLook[K]>
+  ): Promise<void> {
+    const settings = this.plugin.settings;
+    if (settings.gridLookScope !== "grid") {
+      (settings as unknown as Record<string, unknown>)[key] = value;
+    } else {
+      this.writeLook(key, value);
+    }
+    await this.plugin.saveSettings();
+    this.applyLook();
+  }
+
+  /** Drops this grid's own value for one setting, back onto the shared one. */
+  private async clearLookKey(key: keyof GridLook): Promise<void> {
+    this.writeLook(key, undefined);
+    await this.plugin.saveSettings();
+    this.applyLook();
+  }
+
+  /** Home keeps its look on settings; every other grid keeps it on itself. */
+  private writeLook<K extends keyof GridLook>(key: K, value: GridLook[K]): void {
+    const settings = this.plugin.settings;
+    const active = this.activeGrid();
+    let slot: GridLook | undefined;
+    if (active.name === settings.homeGridName) {
+      slot = settings.homeGridLook ??= {};
+    } else {
+      const grid = settings.grids.find((g) => g.name === active.name);
+      if (grid) slot = grid.look ??= {};
+    }
+    if (!slot) return;
+    if (value === undefined) delete slot[key];
+    else slot[key] = value;
+  }
+
   private tileSizeItems(): MenuItem[] {
-    const current = this.plugin.settings.tileSize;
+    const current = this.look().tileSize;
     const first = STAGES[0];
     const last = STAGES[STAGES.length - 1];
     const stages: MenuItem[] = STAGES.map((stage, i) => ({
@@ -2099,14 +2294,41 @@ export class OrikoView extends ItemView {
         onSelect: () => this.setTileSize(expandStage(current)),
       },
       ...stages,
+      // The way back, on the same terms as the rest of the look: shown and
+      // inert unless this grid has set a size of its own.
+      ...(this.plugin.settings.gridLookScope === "grid"
+        ? [
+            {
+              icon: "undo-2",
+              label: "Use the shared setting",
+              divider: true,
+              disabled: this.plugin.settings.gridTileSizes[this.gridKey()] === undefined,
+              onSelect: () => void this.clearTileSize(),
+            },
+          ]
+        : []),
     ];
   }
 
+  /**
+   * Where a tile size lands: on this grid while each keeps its own, and on
+   * the shared setting otherwise. Its own map rather than the grid's look,
+   * because a stage is a pixel width and does not travel to a phone.
+   */
   private setTileSize(stage: DensityStage): void {
-    if (stage === this.plugin.settings.tileSize) return;
-    this.plugin.settings.tileSize = stage;
+    if (stage === this.look().tileSize) return;
+    const settings = this.plugin.settings;
+    if (settings.gridLookScope === "grid") settings.gridTileSizes[this.gridKey()] = stage;
+    else settings.tileSize = stage;
     void this.plugin.saveSettings();
     this.grid?.setDensity(stage);
+  }
+
+  /** Drops this grid's own tile size, back onto the shared one. */
+  private async clearTileSize(): Promise<void> {
+    delete this.plugin.settings.gridTileSizes[this.gridKey()];
+    await this.plugin.saveSettings();
+    this.applyLook();
   }
 
   private openCreate(x: number, y: number): void {
@@ -2204,10 +2426,42 @@ export class OrikoView extends ItemView {
 
   // ---- Folders -----------------------------------------------------------
 
-  /** The value a FolderSpace.grid carries for the grid on screen: "" for home. */
-  private folderGridKey(): string {
+  /** The key the grid on screen is written as: "" for home, its name
+      otherwise, which is how `grid:` and FolderSpace.grid both spell it. */
+  private gridKey(): string {
     const active = this.activeGrid().name;
     return active === this.plugin.settings.homeGridName ? "" : active;
+  }
+
+  /** Kept for the folder code, which asks the same question of the same grid. */
+  private folderGridKey(): string {
+    return this.gridKey();
+  }
+
+  /** A grid's own look, wherever that grid keeps it. Home is not in `grids`,
+      so its slot is on settings beside the name and icon it also keeps there. */
+  private lookOf(grid: GridSpace): GridLook | undefined {
+    return grid.name === this.plugin.settings.homeGridName
+      ? this.plugin.settings.homeGridLook
+      : this.plugin.settings.grids.find((g) => g.name === grid.name)?.look;
+  }
+
+  /**
+   * The five look settings in force on the wall.
+   *
+   * The one place the scope is read. On "all" no override is passed and every
+   * grid resolves to the shared settings; on "grid" the active grid's own are
+   * handed over and anything it has not set still falls back. Every read of
+   * the five goes through here so the two cannot drift.
+   */
+  private look(): ResolvedLook {
+    const settings = this.plugin.settings;
+    if (settings.gridLookScope !== "grid") return resolveLook(settings, undefined, undefined);
+    return resolveLook(
+      settings,
+      this.lookOf(this.activeGrid()),
+      settings.gridTileSizes[this.gridKey()]
+    );
   }
 
   /** Whether the grid on screen can be filed into, and so can hold folders. */
@@ -2710,6 +2964,9 @@ export class OrikoView extends ItemView {
     const settings = this.plugin.settings;
     const members = membersOf(this.plugin.index.records(), from).map((r) => r.path);
     let was: GridSpace;
+    // Read before the branch below moves it. Home's key is "" whatever it is
+    // called, so a home rename has no tile size to carry.
+    const renamingHome = from === settings.homeGridName;
 
     if (from === settings.homeGridName) {
       was = { name: settings.homeGridName, icon: settings.homeGridIcon };
@@ -2724,6 +2981,19 @@ export class OrikoView extends ItemView {
       if (next.rules !== undefined) entry.rules = next.rules;
     }
     if (settings.activeGrid === from) settings.activeGrid = next.name;
+    /*
+     * The look itself rides on the grid object and needs nothing here. Tile
+     * size is the exception: it is kept in a map by name, because it is the
+     * one part of a look that does not travel to another device, and a map
+     * keyed by name is what a rename can orphan.
+     */
+    if (!renamingHome && next.name !== from) {
+      const stage = settings.gridTileSizes[from];
+      if (stage !== undefined) {
+        settings.gridTileSizes[next.name] = stage;
+        delete settings.gridTileSizes[from];
+      }
+    }
     await this.plugin.saveSettings();
 
     // Renaming home rewrites only the notes that spell it out; the rest

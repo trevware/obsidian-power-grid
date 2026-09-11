@@ -1,7 +1,6 @@
 import { AbstractInputSuggest, App, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
-import { isDateProperty } from "./core/dates";
-import { surveyProperties } from "./core/facet-catalog";
+import { slotCandidates, surveyProperties } from "./core/facet-catalog";
 import { facetLabel } from "./core/filter";
 import { OrikoView, VIEW_TYPE_GRID } from "./view";
 import type OrikoPlugin from "./main";
@@ -69,6 +68,7 @@ export class OrikoSettingTab extends PluginSettingTab {
     }
   }
 
+
   /**
    * Which properties a dropdown offers. Dates and everything else are
    * separated by what the vault actually holds under each key, the same
@@ -77,20 +77,7 @@ export class OrikoSettingTab extends PluginSettingTab {
    * shows as chosen rather than silently reading as None.
    */
   private slotOptions(dates: boolean, current: string): Record<string, string> {
-    const byKey = new Map<string, Set<string>>();
-    for (const record of this.plugin.index.records()) {
-      for (const [key, list] of Object.entries(record.properties)) {
-        if (list.length === 0) continue;
-        let seen = byKey.get(key);
-        if (!seen) byKey.set(key, (seen = new Set()));
-        for (const value of list) seen.add(value);
-      }
-    }
-    const keys = surveyProperties(this.plugin.index.records())
-      .map((stat) => stat.key)
-      .filter((key) => isDateProperty(byKey.get(key) ?? []) === dates);
-    if (current && !keys.includes(current)) keys.unshift(current);
-
+    const keys = slotCandidates(this.plugin.index.records(), dates, current);
     const options: Record<string, string> = { "": "None" };
     for (const key of keys) options[key] = facetLabel(key);
     return options;
@@ -270,6 +257,25 @@ export class OrikoSettingTab extends PluginSettingTab {
       },
       {
         type: "group",
+        heading: "Grid settings",
+        items: [
+          {
+            name: "Grid settings apply to",
+            desc: "Tile size, the tile corners, filter properties and autoplay. Per grid, each wall keeps its own and you set them from the wall's own settings; anything a grid has not set follows what is here.",
+            aliases: ["per grid", "scope", "shared", "look"],
+            control: {
+              type: "dropdown",
+              key: "gridLookScope",
+              options: {
+                all: "All grids",
+                grid: "Per grid",
+              },
+            },
+          },
+        ],
+      },
+      {
+        type: "group",
         heading: "Show on tiles",
         items: [
           {
@@ -345,6 +351,14 @@ export class OrikoSettingTab extends PluginSettingTab {
         const width = Number(value);
         if (!Number.isFinite(width) || width < 100) return;
         settings.thumbnailWidth = Math.round(width);
+        break;
+      }
+      case "gridLookScope": {
+        settings.gridLookScope = value === "grid" ? "grid" : "all";
+        // Nothing is cleared on the way out. A grid keeps what it was given,
+        // unread, and has it back if the switch comes back: the switch is not
+        // a door you can only walk through once. Saving is what redraws the
+        // open walls, density, corners and autoplay together.
         break;
       }
       default:

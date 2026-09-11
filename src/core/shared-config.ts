@@ -128,9 +128,8 @@ function isGrid(value: unknown): value is GridSpace {
     is optional and resolveLook ignores one it does not recognise, so the
     object only has to be an object. */
 function readLook(value: unknown): GridLook | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as GridLook)
-    : undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  return value;
 }
 
 /**

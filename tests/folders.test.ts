@@ -7,6 +7,7 @@ import {
   folderTileId,
   heightRatioFor,
   partitionWall,
+  planFolderMove,
   spanFor,
   validateFolderName,
   widthForDrag,
@@ -224,5 +225,57 @@ describe("collagePlan", () => {
 
   it("caps at the cover count for the width", () => {
     expect(collagePlan(50, 1)).toHaveLength(COVER_COUNT[1]);
+  });
+});
+
+describe("planFolderMove", () => {
+  const here = (name: string): FolderSpace => ({ name, icon: "folder", grid: "", width: 1 });
+  const there = (name: string): FolderSpace => ({
+    name,
+    icon: "folder",
+    grid: "Design",
+    width: 1,
+  });
+
+  it("moves folders whose name is free on the target", () => {
+    const all = [here("Kitchen"), here("Film"), there("Archive")];
+    const plan = planFolderMove([all[0], all[1]], "Design", all);
+
+    expect(plan.moved.map((f) => f.name)).toEqual(["Kitchen", "Film"]);
+    expect(plan.blocked).toEqual([]);
+  });
+
+  it("blocks a folder whose name the target already has", () => {
+    const all = [here("Kitchen"), here("Film"), there("Film")];
+    const plan = planFolderMove([all[0], all[1]], "Design", all);
+
+    expect(plan.moved.map((f) => f.name)).toEqual(["Kitchen"]);
+    expect(plan.blocked).toEqual(["Film"]);
+  });
+
+  it("compares names the way validateFolderName does, ignoring case", () => {
+    const all = [here("Film"), there("film")];
+    expect(planFolderMove([all[0]], "Design", all).blocked).toEqual(["Film"]);
+  });
+
+  it("skips a folder that is already on the target, rather than blocking it", () => {
+    const all = [there("Archive")];
+    const plan = planFolderMove(all, "Design", all);
+
+    expect(plan.moved).toEqual([]);
+    expect(plan.blocked).toEqual([]);
+  });
+
+  it("reads home as the empty grid key, like grid: itself", () => {
+    const all = [there("Archive"), here("Archive")];
+    expect(planFolderMove([all[0]], "", all).blocked).toEqual(["Archive"]);
+
+    const free = [there("Film"), here("Archive")];
+    expect(planFolderMove([free[0]], "", free).moved.map((f) => f.name)).toEqual(["Film"]);
+  });
+
+  it("counts a folder only against the target grid, not against every grid", () => {
+    const all = [here("Film"), { ...there("Film"), grid: "Reading" }];
+    expect(planFolderMove([all[0]], "Design", all).moved.map((f) => f.name)).toEqual(["Film"]);
   });
 });

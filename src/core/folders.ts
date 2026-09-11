@@ -227,3 +227,46 @@ export function widthForDrag(
   const width = FOLDER_WIDTHS[index] ?? 1;
   return spanFor(width, columns) as FolderWidth;
 }
+
+/** What a move to another grid can and cannot do, decided before anything is written. */
+export interface FolderMovePlan {
+  /** The folders that will move, in the order they were given. */
+  moved: FolderSpace[];
+  /** Names the target grid already uses, which stay where they are. */
+  blocked: string[];
+}
+
+/**
+ * Sorts folders bound for another grid into the ones that can go and the
+ * ones whose name is taken there.
+ *
+ * Names are unique per grid, not per vault, so the only thing that can stop
+ * a move is a folder of the same name already on the target; the comparison
+ * is validateFolderName's, case-insensitive, so the two cannot disagree
+ * about what counts as taken. A blocked folder stops alone and the rest go,
+ * because refusing the whole move over one name would leave the user to
+ * work out which one it was.
+ *
+ * A folder already on the target is not a move and not a failure: it is
+ * dropped, the way moving a clipping to the grid it is already on is.
+ */
+export function planFolderMove(
+  folders: readonly FolderSpace[],
+  target: string,
+  all: readonly FolderSpace[]
+): FolderMovePlan {
+  const taken = all
+    .filter((folder) => folder.grid === target)
+    .map((folder) => folder.name.trim().toLowerCase());
+
+  const moved: FolderSpace[] = [];
+  const blocked: string[] = [];
+
+  for (const folder of folders) {
+    if (folder.grid === target) continue;
+    if (taken.includes(folder.name.trim().toLowerCase())) blocked.push(folder.name);
+    else moved.push(folder);
+  }
+
+  return { moved, blocked };
+}

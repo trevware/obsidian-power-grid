@@ -3,6 +3,7 @@ import type { OrikoSettings } from "./settings";
 import { readFolderWidth } from "./folders";
 import type { FolderSpace } from "./folders";
 import type { GridSpace } from "./spaces";
+import type { GridLook } from "./look";
 
 /**
  * The half of the settings that describes the vault, and therefore belongs
@@ -25,6 +26,14 @@ export interface SharedConfig {
   folders: FolderSpace[];
   homeGridName: string;
   homeGridIcon: string;
+  /**
+   * Home's own look. Here rather than left behind with the tile sizes,
+   * because every other grid's look rides along inside `grids` and home
+   * being the one wall that forgot itself on another device would read as a
+   * bug. Absent means home has none, which is the file speaking for the
+   * vault the way the folders list does.
+   */
+  homeGridLook?: GridLook;
   filterProperties: string[];
 }
 
@@ -59,6 +68,7 @@ export function sharedOf(settings: OrikoSettings): SharedConfig {
     folders: [...settings.folders],
     homeGridName: settings.homeGridName,
     homeGridIcon: settings.homeGridIcon,
+    homeGridLook: settings.homeGridLook,
     filterProperties: [...settings.filterProperties],
   };
 }
@@ -83,6 +93,7 @@ export function isDefaultShared(shared: SharedConfig): boolean {
     shared.folders.length === 0 &&
     shared.homeGridName === base.homeGridName &&
     shared.homeGridIcon === base.homeGridIcon &&
+    shared.homeGridLook === undefined &&
     shared.filterProperties.length === base.filterProperties.length &&
     shared.filterProperties.every((p, i) => p === base.filterProperties[i])
   );
@@ -103,7 +114,23 @@ function isGrid(value: unknown): value is GridSpace {
   // Rules are the smart grid's membership. Absent is a manual grid; anything
   // that is not an object is a file someone has edited into nonsense, and
   // dropping the rules turns that grid manual rather than losing it.
-  return grid.rules === undefined || (typeof grid.rules === "object" && grid.rules !== null);
+  if (grid.rules !== undefined && (typeof grid.rules !== "object" || grid.rules === null)) {
+    return false;
+  }
+  // A look edited into nonsense is dropped and the grid kept, the way a
+  // broken width is: every key in a look is optional, so losing it puts the
+  // grid back on the shared settings rather than losing the grid.
+  grid.look = readLook(grid.look);
+  return true;
+}
+
+/** A look as the file spells it, or undefined. Not field by field: every key
+    is optional and resolveLook ignores one it does not recognise, so the
+    object only has to be an object. */
+function readLook(value: unknown): GridLook | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as GridLook)
+    : undefined;
 }
 
 /**
@@ -159,6 +186,7 @@ export function parseShared(raw: unknown, fallback: SharedConfig): SharedConfig 
       typeof from.homeGridIcon === "string" && from.homeGridIcon !== ""
         ? from.homeGridIcon
         : fallback.homeGridIcon,
+    homeGridLook: readLook(from.homeGridLook),
     filterProperties: properties ?? fallback.filterProperties,
   };
 }

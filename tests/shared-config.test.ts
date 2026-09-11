@@ -28,8 +28,53 @@ describe("sharedOf and withShared", () => {
       "folders",
       "grids",
       "homeGridIcon",
+      "homeGridLook",
       "homeGridName",
     ]);
+  });
+
+  it("carries a grid's look, so a wall looks the same on the phone", () => {
+    const grids = [{ name: "Manga", icon: "book", look: { tileDate: "published" } }];
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      grids,
+      homeGridLook: { tileProperty: "author" },
+      // Device-local, both of them: a phone keeps its own.
+      tileSize: "s" as const,
+      gridTileSizes: { Manga: "xl" as const },
+      gridLookScope: "grid" as const,
+    };
+    const shared = sharedOf(settings);
+
+    expect(shared.grids[0].look).toEqual({ tileDate: "published" });
+    expect(shared.homeGridLook).toEqual({ tileProperty: "author" });
+    expect(shared).not.toHaveProperty("gridTileSizes");
+    expect(shared).not.toHaveProperty("gridLookScope");
+  });
+
+  it("keeps a look through the file and drops one edited into nonsense", () => {
+    const round = parseShared(
+      JSON.parse(
+        JSON.stringify({
+          grids: [
+            { name: "Manga", icon: "book", look: { tileDate: "published" } },
+            { name: "Broken", icon: "book", look: "nonsense" },
+          ],
+          folders: [],
+          homeGridName: "Clippings",
+          homeGridIcon: "layout-grid",
+          homeGridLook: { tileProperty: "author" },
+          filterProperties: ["categories"],
+        })
+      ),
+      fallback
+    );
+
+    expect(round.grids[0].look).toEqual({ tileDate: "published" });
+    // The grid survives; only the unreadable look goes.
+    expect(round.grids[1].name).toBe("Broken");
+    expect(round.grids[1].look).toBeUndefined();
+    expect(round.homeGridLook).toEqual({ tileProperty: "author" });
   });
 
   it("leaves the device's half alone when merging", () => {

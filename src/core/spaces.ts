@@ -1,4 +1,5 @@
 import { EMPTY_VALUE, isFilterEmpty } from "./filter";
+import type { GridLook } from "./look";
 import type { FacetDef, FilterState } from "./filter";
 import type { ClippingRecord } from "./scan";
 
@@ -25,6 +26,12 @@ export interface GridSpace {
    * membership is the `grid:` key and a write.
    */
   rules?: FilterState;
+  /**
+   * This grid's own look, read only while `gridLookScope` is "grid". Stored
+   * on the grid rather than in a map keyed by its name, so a rename carries
+   * it and cannot orphan it. Every key is an override; see look.ts.
+   */
+  look?: GridLook;
 }
 
 /**

@@ -1,4 +1,5 @@
 import type { DensityStage } from "./density";
+import type { GridLook, LookScope } from "./look";
 import type { FolderSpace } from "./folders";
 import type { GridSpace, SharedClipTarget } from "./spaces";
 
@@ -55,11 +56,29 @@ export interface OrikoSettings {
   sharedClipTarget: SharedClipTarget;
   /** Whether the layer panel is showing, kept so it opens as you left it. */
   /**
-   * How densely the wall is packed, as a named stage (see density.ts). One
-   * setting for every pane rather than one per grid: it is about how much
-   * room the pane has, not which grid is in it.
+   * How densely the wall is packed, as a named stage (see density.ts). The
+   * shared answer, used by every grid while `gridLookScope` is "all" and by
+   * any grid that has not set its own while it is "grid".
    */
   tileSize: DensityStage;
+
+  /**
+   * Whether the five look settings answer once for every grid, or once per
+   * grid. See look.ts, which owns what "the five" are and how a grid's own
+   * value falls back to the shared one.
+   */
+  gridLookScope: LookScope;
+  /** Home's own look. Home is not in `grids`, so it keeps its slot here,
+      beside the name and icon it already keeps here for the same reason. */
+  homeGridLook?: GridLook;
+  /**
+   * Per-grid tile size, by grid key ("" for home). Apart from the rest of a
+   * grid's look and out of SharedConfig on purpose: a stage is a target
+   * column width in pixels, so a grid set to Huge on a desktop would arrive
+   * on a phone as one column per row. Keyed by name because it is not stored
+   * with the grid, which is why renameGridDef has to move its key.
+   */
+  gridTileSizes: Record<string, DensityStage>;
   /** Full path to yt-dlp, "" to discover it on PATH and in common installs. */
   ytdlpPath: string;
   /** Full path to ffmpeg, "" to discover it on PATH and in common installs. */
@@ -85,6 +104,8 @@ export const DEFAULT_SETTINGS: OrikoSettings = {
   activeGrid: "Clippings",
   sharedClipTarget: "last-opened",
   tileSize: "m",
+  gridLookScope: "all",
+  gridTileSizes: {},
   ytdlpPath: "",
   ffmpegPath: "",
 };
